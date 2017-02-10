@@ -1,0 +1,207 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r setup}
+rm(list=ls())
+library(scales)
+library(ggplot2)
+library(gridExtra)
+```
+
+```{r}
+
+# exclusions <- c(
+#     'precinct_summary_110 - U.S. Representative, District 12.csv',
+#     'precinct_summary_115 - U.S. Representative, District 13.csv',
+#     'precinct_summary_120 - U.S. Representative, District 14.csv',
+#     'precinct_summary_140 - Board of Supervisors, District 1.csv',
+#     'precinct_summary_145 - Board of Supervisors, District 3.csv',
+#     'precinct_summary_155 - Board of Supervisors, District 7.csv',
+#     'precinct_summary_160 - Board of Supervisors, District 9.csv',
+#     'precinct_summary_165 - Board of Supervisors, District 11.csv',
+#     'precinct_summary_185 - BART Director, District 7.csv',
+#     'precinct_summary_190 - BART Director, District 9.csv'
+# )
+
+exclusions <- c()
+
+raw.df <- NULL
+measure.names <- c()
+for(f in list.files('./data/derived_data')){
+  # For now we only want to parse the files that are election data that is not explicitly excluded above
+  if(startsWith(f, 'precinct_summary_') & !(f %in% exclusions)){
+    df <- read.csv(paste('./data/derived_data/', f, sep=''))
+    prefix <- tolower(strsplit(f, '-')[[1]][2])
+    prefix <- gsub("^[[:space:]]", "", prefix)  # Strip leading whitespace
+    prefix <- gsub("[[:space:]]", "_", prefix)  # Replace spaces with underscores
+    prefix <- gsub("[^[:alnum:]&^\\_]", "", prefix)  # Drop non-alphanumeric characters (except underscores)
+    prefix <- substr(prefix, start=1, stop=nchar(prefix)-3)  # Drop the "csv" from the end
+    measure.names <- c(measure.names, prefix)
+    names(df)[names(df)!='precinctid'] <- paste(prefix, names(df)[names(df)!='precinctid'], sep='_')
+    if(is.null(raw.df)){
+      raw.df <- df
+    }
+    else{
+      raw.df <- merge(raw.df, df, by='precinctid', all.x=TRUE)
+    }
+  }
+}
+```
+
+### Feature creation
+
+Now we need to do feature creation and cleaning. We don't care about over vote on its own, so we'll certainly drop that. In precincts where there was no over vote for a certain binary measure (unlikely but possible), this would still be overdefined (i.e. yes + no + under = ballots cast), so we'll represent yes/no votes with the metric yes / (yes|no). For races with people, we'll drop write-in since I'd be shocked if that had any useful information, and then normalize the rest of the votes as candidate / !(under|over). For every measure we'll also creat features calculated as under|over / ballots cast and ballots cast / registration, called "unaccepted" and "turnout," respectively. The interpretation of the former of those metrics depends on whether over votes were a significant portion of the ballots cast, and our interpretation of over votes themselves - for example, do we count over votes as people who had an opinion on the measure but just got confused, or do we think that they were more people who didn't care and so intentionally filled out their ballots incorrectly as a joke? First let's look at the average percent of ballots cast that were over votes, to see if this even matters.
+
+```{r}
+over.vote.percents <- c()
+for (measure.name in measure.names){
+  voters <- raw.df[!is.na(raw.df[, paste(measure.name, 'over_vote', sep='_')]),]
+  over.vote <- voters[, paste(measure.name, 'over_vote', sep='_')]
+  ballots.cast <- voters[, paste(measure.name, 'ballots_cast', sep='_')]
+  over.vote.percents <- c(over.vote.percents, sum(over.vote) / sum(ballots.cast))
+}
+# We need to exclude State Senator in District 13, because no one in SF voted in it:
+over.vote.percents <- over.vote.percents[!is.na(over.vote.percents)]
+```
+
+On average, `r percent(mean(over.vote.percents))` of the ballots cast for a measure were over votes, so we don't need to worry too much about their interpretation.
+
+Now let's transform the features for all of the measures as discussed above:
+
+```{r}
+features.df <- raw.df
+for (measure.name in measure.names){
+  features <- names(features.df)[grepl(measure.name, names(features.df))]
+  if(paste(measure.name, 'yes', sep='_') %in% features){
+    features.df[, paste(measure.name, 'yes_of_accepted', sep='_')] <- (
+      features.df[, paste(measure.name, 'yes', sep='_')] / (
+        features.df[, paste(measure.name, 'yes', sep='_')] + features.df[, paste(measure.name, 'no', sep='_')]
+        )
+      )
+  }
+  else if(paste(measure.name, 'writein', sep='_') %in% features){
+    for (feature in features){
+      if(!(
+        endsWith(feature, 'under_vote') |
+        endsWith(feature, 'over_vote') |
+        endsWith(feature, 'ballots_cast') |
+        endsWith(feature, 'registration')
+      )){
+        features.df[, feature] <- features.df[, feature] / (
+          features.df[, paste(measure.name, 'ballots_cast', sep='_')] -
+          features.df[, paste(measure.name, 'under_vote', sep='_')] -
+          features.df[, paste(measure.name, 'over_vote', sep='_')]
+          )
+      }
+    }
+  }
+  features.df[, paste(measure.name, 'unaccepted', sep='_')] <- (
+    (features.df[, paste(measure.name, 'under_vote', sep='_')] + features.df[, paste(measure.name, 'over_vote', sep='_')]) /
+      features.df[, paste(measure.name, 'ballots_cast', sep='_')]
+    )
+  features.df[, paste(measure.name, 'turnout', sep='_')] <- (
+    features.df[, paste(measure.name, 'ballots_cast', sep='_')] / features.df[, paste(measure.name, 'registration', sep='_')]
+    )
+  features.df <- features.df[, !names(features.df) %in% c(
+    paste(measure.name, 'no', sep='_'),
+    paste(measure.name, 'yes', sep='_'),
+    paste(measure.name, 'writein', sep='_'),
+    paste(measure.name, 'under_vote', sep='_'),
+    paste(measure.name, 'over_vote', sep='_'),
+    paste(measure.name, 'ballots_cast', sep='_'),
+    paste(measure.name, 'precincts', sep='_'),
+    paste(measure.name, 'registration', sep='_')
+  )]
+}
+```
+
+## District 5 Supervisor
+
+A race near and dear to me. Let's start by just checking out what the Dean vote percent correlates with:
+
+```{r}
+# Filter to D5
+d5 <- features.df[!is.na(features.df$board_of_supervisors_district_5_turnout),]
+d5 <- d5[, !apply(is.na(d5), 2, any)]
+d5.subset <- d5[, sapply(names(d5), function(x) !(endsWith(x, 'unaccepted') | endsWith(x, 'turnout')) )]
+d5.subset <- d5.subset[, names(d5.subset) != 'precinctid']
+```
+
+```{r}
+cor.flat <- function(df){
+  cor.matrix <- cor(df)
+  diag(cor.matrix) <- 0
+  cor.matrix[lower.tri(cor.matrix)] <- 0
+  cor.matrix <- as.data.frame(as.table(cor.matrix))
+  names(cor.matrix) <- c("First.Variable", "Second.Variable","Correlation")
+  cor.matrix[order(abs(cor.matrix$Correlation),decreasing=T),]
+}
+
+dean.cor <- cor.flat(d5.subset)[(grepl('dean_preston', cor.matrix$First.Variable))|(grepl('dean_preston', cor.matrix$Second.Variable)),]
+dean.cor[!grepl('dean_preston', dean.cor$First.Variable), c('First.Variable', 'Second.Variable')] <- dean.cor[!grepl('dean_preston', dean.cor$First.Variable), c('Second.Variable', 'First.Variable')]
+dean.cor <- dean.cor[, names(dean.cor) != 'First.Variable']
+dean.cor
+```
+
+Nothing too surprising or counterintuitive in the top couple - London correlating with Dean so strongly obviously makes sense (and would be perfectly correlated if not for writein votes), and, as noted before, a precinct's choice of supervisor is most strongly correlated with whether or not it wanted mandatory condom use in porn (State Prop 60), hilariously enough. Let's look at plots of the top 4 (excluding London):
+
+```{r}
+# Let's drop London, since that's useless
+plot.data <- d5.subset[, c(as.character(dean.cor[2:5, 'Second.Variable']), 'board_of_supervisors_district_5_dean_preston')]
+plots <- lapply(colnames(plot.data)[!grepl('dean_preston', colnames(plot.data))], function(column) {
+  rs <- percent(summary(lm(plot.data[, 'board_of_supervisors_district_5_dean_preston']~plot.data[,column]))$r.squared)
+  ggplot(data=plot.data, aes_string(x=column, y='board_of_supervisors_district_5_dean_preston')) +
+    geom_point() +
+    stat_smooth(method="lm") + ylab('% Dean of Accepted') +
+    annotate("text", x=-Inf, y=-Inf, vjust=0, hjust=0, label=paste('R^2=', rs, sep=''))
+})
+do.call(grid.arrange, list(grobs=plots, ncol=2, top="Strongest Dean Correlations"))
+```
+
+## Towards a metric of "progressiveness"
+
+An interesting metric to work towards would be a vector (or, less ideally, couple of vectors) to represent the "progressiveness" of a precinct. An approach to this that would be more mathematically sound than manually cooking up some vector based on knowledge of local politics is the following:
+* Do dimensionality reduction using PCA
+* Find the principal components that correlate most strongly with some measure where there was a clear progressive/moderate split; the D5 supervisor race lends itself nicely to this (though then this would only apply to D5)
+* Test whether these vectors (or, ideally, this vector) also explain a good chunk of the variance in other measures where there's a clear progressive/moderate split
+
+First let's try this just for the D5 supervisor race to see if we can predict a precinct's supervisor preference with as few PC's as possible:
+
+```{r}
+pca <- prcomp(d5.subset, center=TRUE, scale=TRUE)
+pca.df <- as.data.frame(pca$x)
+pca.df$board_of_supervisors_district_5_dean_preston <- d5.subset$board_of_supervisors_district_5_dean_preston
+pca.cor <- cor.flat(pca.df)
+pca.cor <- pca.cor[grepl('dean_preston', pca.cor$First.Variable)|grepl('dean_preston', pca.cor$Second.Variable), ]
+pca.cor[grepl('dean_preston', pca.cor$Second.Variable), c('First.Variable', 'Second.Variable')] <- pca.cor[grepl('dean_preston', pca.cor$Second.Variable), c('Second.Variable', 'First.Variable')]
+pca.cor
+# fit <- lm(board_of_supervisors_district_5_dean_preston ~ PC1, data = pca.df)
+# ggplot(data=pca.df, aes(x=PC1, y=board_of_supervisors_district_5_dean_preston)) + geom_point() + stat_smooth(method="lm")
+# summary(fit)$r.squared
+```
+
+Now let's just try a multivariable linear regression on the top couple:
+
+```{r}
+mean.residuals <- c()
+fits <- c()
+fit <- NULL
+ns <- 1:10
+for(n in ns){
+  pcs <- as.character(pca.cor[1:n, 'Second.Variable'])
+  pca.subset <- pca.df[, c('board_of_supervisors_district_5_dean_preston', pcs)]
+  this.fit <- lm(board_of_supervisors_district_5_dean_preston ~ ., data=pca.subset)
+  mean.residuals <- c(mean.residuals, mean(abs(this.fit$residuals)))
+}
+
+ggplot(data=data.frame(x=ns, y=mean.residuals), aes(x=x, y=y)) +
+  geom_line() +
+  xlab('Included principal components') +
+  ylab('Mean residual magnitude') +
+  scale_x_continuous(breaks=ns) +
+  scale_y_continuous(breaks=seq(from=0, to=.04, by=.005))
+
+```
+
