@@ -170,7 +170,7 @@ An interesting metric to work towards would be a vector (or, less ideally, coupl
 First let's try this just for the D5 supervisor race to see if we can predict a precinct's supervisor preference with as few PC's as possible:
 
 ```{r}
-pca <- prcomp(d5.subset, center=TRUE, scale=TRUE)
+pca <- prcomp(d5.subset[!grepl('dean_preston', names(d5.subset))&!grepl('london_breed', names(d5.subset))], center=TRUE, scale=TRUE)
 pca.df <- as.data.frame(pca$x)
 pca.df$board_of_supervisors_district_5_dean_preston <- d5.subset$board_of_supervisors_district_5_dean_preston
 pca.cor <- cor.flat(pca.df)
@@ -186,22 +186,50 @@ Now let's just try a multivariable linear regression on the top couple:
 
 ```{r}
 mean.residuals <- c()
-fits <- c()
-fit <- NULL
+fits <- list()
 ns <- 1:10
 for(n in ns){
   pcs <- as.character(pca.cor[1:n, 'Second.Variable'])
   pca.subset <- pca.df[, c('board_of_supervisors_district_5_dean_preston', pcs)]
-  this.fit <- lm(board_of_supervisors_district_5_dean_preston ~ ., data=pca.subset)
-  mean.residuals <- c(mean.residuals, mean(abs(this.fit$residuals)))
+  fit <- lm(board_of_supervisors_district_5_dean_preston ~ ., data=pca.subset)
+  mean.residuals <- c(mean.residuals, mean(abs(fit$residuals)))
+  fits[[n]] <- fit
 }
 
-ggplot(data=data.frame(x=ns, y=mean.residuals), aes(x=x, y=y)) +
+do.call(anova, fits)
+
+p1 <- ggplot(data=data.frame(x=ns, y=mean.residuals), aes(x=x, y=y)) +
   geom_line() +
   xlab('Included principal components') +
   ylab('Mean residual magnitude') +
   scale_x_continuous(breaks=ns) +
   scale_y_continuous(breaks=seq(from=0, to=.04, by=.005))
 
+p2 <- ggplot(data=data.frame(x=ns, y=sapply(fits, function(x) summary(x)$r.squared)), aes(x=x, y=y)) +
+  geom_line() +
+  xlab('Included principal components') +
+  ylab('R^2') +
+  scale_x_continuous(breaks=ns)
+
+grid.arrange(p1, p2, top="PCA of Dean Preston vote by precinct")
+
 ```
+
+So we can explain roughly `r percent(summary(fits[[3]])$r.squared)` of the variation in Dean's percent vote by precinct with the 3 most explanatory principal components. Let's look into what these principal components are:
+
+```{r}
+pca.names <- pca.cor[1:3, 'Second.Variable']
+print(pca.cor[1:3,])
+lapply(pca.names, function(x){
+  print(as.character(x))
+  print(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing = TRUE)][1:10])
+})
+# dean.pc.rotation <- pca$rotation[, pca.names]
+# coefficients <- data.frame(lapply(colnames(dean.pc.rotation), function(x){
+#   dean.pc.rotation[order(sort(abs(dean.pc.rotation[, x])), decreasing = TRUE), x]
+# }))
+# coefficients
+
+```
+pca$rotation$PC1
 
