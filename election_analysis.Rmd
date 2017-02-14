@@ -139,7 +139,8 @@ cor.flat <- function(df){
   cor.matrix[order(abs(cor.matrix$Correlation),decreasing=T),]
 }
 
-dean.cor <- cor.flat(d5.subset)[(grepl('dean_preston', cor.matrix$First.Variable))|(grepl('dean_preston', cor.matrix$Second.Variable)),]
+dean.cor <- cor.flat(d5.subset)
+dean.cor <- dean.cor[(grepl('dean_preston', dean.cor$First.Variable))|(grepl('dean_preston', dean.cor$Second.Variable)),]
 dean.cor[!grepl('dean_preston', dean.cor$First.Variable), c('First.Variable', 'Second.Variable')] <- dean.cor[!grepl('dean_preston', dean.cor$First.Variable), c('Second.Variable', 'First.Variable')]
 dean.cor <- dean.cor[, names(dean.cor) != 'First.Variable']
 dean.cor
@@ -170,7 +171,7 @@ An interesting metric to work towards would be a vector (or, less ideally, coupl
 First let's try this just for the D5 supervisor race to see if we can predict a precinct's supervisor preference with as few PC's as possible:
 
 ```{r}
-pca <- prcomp(d5.subset[!grepl('dean_preston', names(d5.subset))&!grepl('london_breed', names(d5.subset))], center=TRUE, scale=TRUE)
+pca <- prcomp(d5.subset[!grepl('board_of_supervisors_district_5', names(d5.subset))], center=TRUE, scale=TRUE)
 pca.df <- as.data.frame(pca$x)
 pca.df$board_of_supervisors_district_5_dean_preston <- d5.subset$board_of_supervisors_district_5_dean_preston
 pca.cor <- cor.flat(pca.df)
@@ -182,12 +183,44 @@ pca.cor
 # summary(fit)$r.squared
 ```
 
-Now let's just try a multivariable linear regression on the top couple:
+Now let's just try a multiple linear regression on the top couple:
 
 ```{r}
 mean.residuals <- c()
 fits <- list()
 ns <- 1:10
+for(n in ns){
+  pcs <- as.character(pca.cor[1:n, 'Second.Variable'])
+  pca.subset <- pca.df[, c('board_of_supervisors_district_5_dean_preston', pcs)]
+  fit <- lm(board_of_supervisors_district_5_dean_preston ~ ., data=pca.subset)
+  mean.residuals <- c(mean.residuals, mean(abs(fit$residuals)))
+  fits[[n]] <- fit
+}
+
+do.call(anova, fits)
+
+p1 <- ggplot(data=data.frame(x=ns, y=mean.residuals), aes(x=x, y=y)) +
+  geom_line() +
+  xlab('Included principal components') +
+  ylab('Mean residual magnitude') +
+  scale_x_continuous(breaks=ns) +
+  scale_y_continuous(breaks=seq(from=0, to=.04, by=.005))
+
+p2 <- ggplot(data=data.frame(x=ns, y=sapply(fits, function(x) summary(x)$r.squared)), aes(x=x, y=y)) +
+  geom_line() +
+  xlab('Included principal components') +
+  ylab('R^2') +
+  scale_x_continuous(breaks=ns)
+
+grid.arrange(p1, p2, top="PCA of Dean Preston vote by precinct")
+
+```
+
+```{r}
+mean.residuals <- c()
+fits <- list()
+ns <- 1:10
+
 for(n in ns){
   pcs <- as.character(pca.cor[1:n, 'Second.Variable'])
   pca.subset <- pca.df[, c('board_of_supervisors_district_5_dean_preston', pcs)]
