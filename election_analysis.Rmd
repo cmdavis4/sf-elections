@@ -12,19 +12,6 @@ library(gridExtra)
 
 ```{r}
 
-# exclusions <- c(
-#     'precinct_summary_110 - U.S. Representative, District 12.csv',
-#     'precinct_summary_115 - U.S. Representative, District 13.csv',
-#     'precinct_summary_120 - U.S. Representative, District 14.csv',
-#     'precinct_summary_140 - Board of Supervisors, District 1.csv',
-#     'precinct_summary_145 - Board of Supervisors, District 3.csv',
-#     'precinct_summary_155 - Board of Supervisors, District 7.csv',
-#     'precinct_summary_160 - Board of Supervisors, District 9.csv',
-#     'precinct_summary_165 - Board of Supervisors, District 11.csv',
-#     'precinct_summary_185 - BART Director, District 7.csv',
-#     'precinct_summary_190 - BART Director, District 9.csv'
-# )
-
 exclusions <- c()
 
 raw.df <- NULL
@@ -52,7 +39,9 @@ for(f in list.files('./data/derived_data')){
 
 ### Feature creation
 
-Now we need to do feature creation and cleaning. We don't care about over vote on its own, so we'll certainly drop that. In precincts where there was no over vote for a certain binary measure (unlikely but possible), this would still be overdefined (i.e. yes + no + under = ballots cast), so we'll represent yes/no votes with the metric yes / (yes|no). For races with people, we'll drop write-in since I'd be shocked if that had any useful information, and then normalize the rest of the votes as candidate / !(under|over). For every measure we'll also creat features calculated as under|over / ballots cast and ballots cast / registration, called "unaccepted" and "turnout," respectively. The interpretation of the former of those metrics depends on whether over votes were a significant portion of the ballots cast, and our interpretation of over votes themselves - for example, do we count over votes as people who had an opinion on the measure but just got confused, or do we think that they were more people who didn't care and so intentionally filled out their ballots incorrectly as a joke? First let's look at the average percent of ballots cast that were over votes, to see if this even matters.
+Now we need to do feature creation and cleaning. We don't care about over vote on its own, so we'll certainly drop that. In precincts where there was no over vote for a certain binary measure (unlikely but possible), this would still be overdefined (i.e. yes + no + under = ballots cast), so we'll drop under votes as well. We'll then normalize the yes votes as yes/(yes+no), which we'll call "yes_of_accepted", and drop the no votes. For races with people, we'll drop write-in since I'd be shocked if that had any useful information, and then normalize the rest of the votes as candidate / ballots_cast. For every measure we'll also create a feature calculated and ballots cast / registration, called which we'll call "turnout"
+
+To make sure that dropping over votes is ok, let's look at the average percent of ballots cast that were over votes:
 
 ```{r}
 over.vote.percents <- c()
@@ -81,7 +70,7 @@ for (measure.name in measure.names){
         )
       )
   }
-  else if(paste(measure.name, 'writein', sep='_') %in% features){
+  else{
     for (feature in features){
       if(!(
         endsWith(feature, 'under_vote') |
@@ -89,18 +78,10 @@ for (measure.name in measure.names){
         endsWith(feature, 'ballots_cast') |
         endsWith(feature, 'registration')
       )){
-        features.df[, feature] <- features.df[, feature] / (
-          features.df[, paste(measure.name, 'ballots_cast', sep='_')] -
-          features.df[, paste(measure.name, 'under_vote', sep='_')] -
-          features.df[, paste(measure.name, 'over_vote', sep='_')]
-          )
+        features.df[, feature] <- features.df[, feature] / features.df[, paste(measure.name, 'ballots_cast', sep='_')]
       }
     }
   }
-  features.df[, paste(measure.name, 'unaccepted', sep='_')] <- (
-    (features.df[, paste(measure.name, 'under_vote', sep='_')] + features.df[, paste(measure.name, 'over_vote', sep='_')]) /
-      features.df[, paste(measure.name, 'ballots_cast', sep='_')]
-    )
   features.df[, paste(measure.name, 'turnout', sep='_')] <- (
     features.df[, paste(measure.name, 'ballots_cast', sep='_')] / features.df[, paste(measure.name, 'registration', sep='_')]
     )
@@ -125,8 +106,7 @@ A race near and dear to me. Let's start by just checking out what the Dean vote 
 # Filter to D5
 d5 <- features.df[!is.na(features.df$board_of_supervisors_district_5_turnout),]
 d5 <- d5[, !apply(is.na(d5), 2, any)]
-d5.subset <- d5[, sapply(names(d5), function(x) !(endsWith(x, 'unaccepted') | endsWith(x, 'turnout')) )]
-d5.subset <- d5.subset[, names(d5.subset) != 'precinctid']
+d5.subset <- d5[, sapply(names(d5), function(x) !endsWith(x, 'turnout') & x != 'precinctid')]
 ```
 
 ```{r}
@@ -221,7 +201,7 @@ pca.names <- pca.cor[1:3, 'Second.Variable']
 
 dummy <- lapply(pca.names, function(x){
   print(as.character(x))
-  print(as.table(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing=TRUE)][1:10]))
+  print(as.table(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing=TRUE)][1:20]))
 })
 
 # dean.pca.rotation <- data.frame(lapply(pca.names, function(x){
@@ -231,10 +211,18 @@ dummy <- lapply(pca.names, function(x){
 # dean.pca.rotation
 ```
 
-I'll now attempt to interpret these using a qualitative knowledge of city politics/the polarizatio around a given measure.
+I'll now attempt to interpret these using a qualitative knowledge of city politics/the polarization around a given measure:
 
-###PC1
-In a *very* rough sense, PC1 corresponds to something like **general "conservativness" on ballot measures** - things like keeping the death penalty, maintaining the criminalization of marijuana, voting for the nefarious Prop Q which was essentially a symbolic middle finger to homeless people, etc. This interpretation holds fairly well for all 10 of the top propositions.
+###PC1: General "Conservativeness""
+In a *very* rough sense, PC1 corresponds to something like **general "conservativness"** - things like keeping the death penalty, maintaining the criminalization of marijuana, voting for the nefarious Prop Q which was essentially a symbolic middle finger to homeless people, etc. This interpretation holds fairly well for all 10 of the top propositions.
 
-###PC5
-PC5 is a little harder to interpet, as there are some conflicting components here as far as cleavage along traditional left/right political lines. The high positive coefficient of voting for Jill Stein and negative coefficient of voting for Hillary Clinton is very telling, and might lead one to believe that this is the Bernie crowd, but some of the other important features complicate this interpretation. State prop 51 was somewhat contentious among progressives, but voting against it is the most important feature of this component, which makes the Bernie interpretation hard to swallow. Overall the character of this component is to vote far left on *people* (yes on Jill Stein and Preston Picus, no on Hillary Clinton [Rob Geller received such a small portion of the popular vote that I'm hesitant to say anything about him in this context]), but to actually vote *right* in a "small government" sense on ballot measures (no on gun control and basically anything involving government spending.) Interpeting this one is much more of an art than a science, but a first guess would be that this is folks who **are generally distrustful of both corporations, the government, and especially the intersection of the two in "corporate" politicians**. This explains their aversion to gun control, government spending, Hillary Clinton, Nancy Pelosi, and London Breed; and their embrace of Jill Stein, Preston Picus, and Dean Preston, none of whom took corporate money.
+###PC3: Anti-Corporate/Anti-Establishment Sentiment
+PC5 is a little harder to interpet, as there are some conflicting components here as far as cleavage along traditional left/right political lines. At first one might think this is the progressive democrat contingent, since voting for Preston Picus and not for Nancy Pelosi were the single most important features of this PC, but the ballot measures (and positive coefficient for Gary Johnson) complicate that interpretation. I suspect this principal component represents something more like **anti-establishment sentiment**. From the perspective of candidates, we see that this PC voted for Dean Preston, Preston Picus, Jill Stein, and Gary Johnson, and emphatically NOT for London Breed, Nancy Pelosi, or Hillary Clinton, which can pretty uncontroversially be classified as an insurgent/establishment binary. However, from the point of view of ballot measures, this PC also voted against school bonds, taxes, condoms in porn, and gun control, and for restrictions on campaign contributions from lobbyists and transparency in the state legislature. I believe this feature can then be interpreted as distrust of the establishment, both political and corporate, and especially the intersection of the two. These may be small-government folks, some libertarians (as we see from the Gary Johnson coefficient,) or just people whose defining political ideology is less a left/right persepctive than it is an antagonistic stance towards a corrupt political establishment.
+
+*\*\*Note that the school board/community college members here were a little all over the place since you could vote for about half of the field, so I didn't belabor them, but they roughly match the above interpretation.*
+
+
+~~The high positive coefficient of voting for Jill Stein and negative coefficient of voting for Hillary Clinton is very telling, and might lead one to believe that this is the Bernie crowd, but some of the other important features complicate this interpretation. State prop 51 was somewhat contentious among progressives, but voting against it is the most important feature of this component, which makes the Bernie interpretation hard to swallow. Overall the character of this component is to vote far left on *people* (yes on Jill Stein and Preston Picus, no on Hillary Clinton [Rob Geller received such a small portion of the popular vote that I'm hesitant to say anything about him in this context]), but to actually vote *right* in a "small government" sense on ballot measures (no on gun control and basically anything involving government spending.) Interpeting this one is much more of an art than a science, but a first guess would be that this is folks who **are generally distrustful of both corporations, the government, and especially the intersection of the two in "corporate" politicians**. This explains their aversion to gun control, government spending, Hillary Clinton, Nancy Pelosi, and London Breed; and their embrace of Jill Stein, Preston Picus, and Dean Preston, none of whom took corporate money.~~
+
+##PC3: Education
+
