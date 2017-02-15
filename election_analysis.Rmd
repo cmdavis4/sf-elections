@@ -171,16 +171,14 @@ An interesting metric to work towards would be a vector (or, less ideally, coupl
 First let's try this just for the D5 supervisor race to see if we can predict a precinct's supervisor preference with as few PC's as possible:
 
 ```{r}
-pca <- prcomp(d5.subset[!grepl('board_of_supervisors_district_5', names(d5.subset))], center=TRUE, scale=TRUE)
+# Set tolerance to .1 to cut out the most useless components
+pca <- prcomp(d5.subset[!grepl('board_of_supervisors_district_5', names(d5.subset))], center=TRUE, scale=TRUE, tol=.1)
 pca.df <- as.data.frame(pca$x)
 pca.df$board_of_supervisors_district_5_dean_preston <- d5.subset$board_of_supervisors_district_5_dean_preston
 pca.cor <- cor.flat(pca.df)
 pca.cor <- pca.cor[grepl('dean_preston', pca.cor$First.Variable)|grepl('dean_preston', pca.cor$Second.Variable), ]
 pca.cor[grepl('dean_preston', pca.cor$Second.Variable), c('First.Variable', 'Second.Variable')] <- pca.cor[grepl('dean_preston', pca.cor$Second.Variable), c('Second.Variable', 'First.Variable')]
 pca.cor
-# fit <- lm(board_of_supervisors_district_5_dean_preston ~ PC1, data = pca.df)
-# ggplot(data=pca.df, aes(x=PC1, y=board_of_supervisors_district_5_dean_preston)) + geom_point() + stat_smooth(method="lm")
-# summary(fit)$r.squared
 ```
 
 Now let's just try a multiple linear regression on the top couple:
@@ -216,53 +214,27 @@ grid.arrange(p1, p2, top="PCA of Dean Preston vote by precinct")
 
 ```
 
-```{r}
-mean.residuals <- c()
-fits <- list()
-ns <- 1:10
-
-for(n in ns){
-  pcs <- as.character(pca.cor[1:n, 'Second.Variable'])
-  pca.subset <- pca.df[, c('board_of_supervisors_district_5_dean_preston', pcs)]
-  fit <- lm(board_of_supervisors_district_5_dean_preston ~ ., data=pca.subset)
-  mean.residuals <- c(mean.residuals, mean(abs(fit$residuals)))
-  fits[[n]] <- fit
-}
-
-do.call(anova, fits)
-
-p1 <- ggplot(data=data.frame(x=ns, y=mean.residuals), aes(x=x, y=y)) +
-  geom_line() +
-  xlab('Included principal components') +
-  ylab('Mean residual magnitude') +
-  scale_x_continuous(breaks=ns) +
-  scale_y_continuous(breaks=seq(from=0, to=.04, by=.005))
-
-p2 <- ggplot(data=data.frame(x=ns, y=sapply(fits, function(x) summary(x)$r.squared)), aes(x=x, y=y)) +
-  geom_line() +
-  xlab('Included principal components') +
-  ylab('R^2') +
-  scale_x_continuous(breaks=ns)
-
-grid.arrange(p1, p2, top="PCA of Dean Preston vote by precinct")
-
-```
-
-So we can explain roughly `r percent(summary(fits[[3]])$r.squared)` of the variation in Dean's percent vote by precinct with the 3 most explanatory principal components. Let's look into what these principal components are:
+So we can explain `r percent(summary(fits[[3]])$r.squared)` of the variation in Dean's percent vote by precinct with the 3 most explanatory principal components. Let's look into what these principal components are:
 
 ```{r}
 pca.names <- pca.cor[1:3, 'Second.Variable']
-print(pca.cor[1:3,])
-lapply(pca.names, function(x){
+
+dummy <- lapply(pca.names, function(x){
   print(as.character(x))
-  print(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing = TRUE)][1:10])
+  print(as.table(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing=TRUE)][1:10]))
 })
-# dean.pc.rotation <- pca$rotation[, pca.names]
-# coefficients <- data.frame(lapply(colnames(dean.pc.rotation), function(x){
-#   dean.pc.rotation[order(sort(abs(dean.pc.rotation[, x])), decreasing = TRUE), x]
+
+# dean.pca.rotation <- data.frame(lapply(pca.names, function(x){
+#   names(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing=TRUE)][1:10])
 # }))
-# coefficients
-
+# colnames(dean.pca.rotation) <- pca.names
+# dean.pca.rotation
 ```
-pca$rotation$PC1
 
+I'll now attempt to interpret these using a qualitative knowledge of city politics/the polarizatio around a given measure.
+
+###PC1
+In a *very* rough sense, PC1 corresponds to something like **general "conservativness" on ballot measures** - things like keeping the death penalty, maintaining the criminalization of marijuana, voting for the nefarious Prop Q which was essentially a symbolic middle finger to homeless people, etc. This interpretation holds fairly well for all 10 of the top propositions.
+
+###PC5
+PC5 is a little harder to interpet, as there are some conflicting components here as far as cleavage along traditional left/right political lines. The high positive coefficient of voting for Jill Stein and negative coefficient of voting for Hillary Clinton is very telling, and might lead one to believe that this is the Bernie crowd, but some of the other important features complicate this interpretation. State prop 51 was somewhat contentious among progressives, but voting against it is the most important feature of this component, which makes the Bernie interpretation hard to swallow. Overall the character of this component is to vote far left on *people* (yes on Jill Stein and Preston Picus, no on Hillary Clinton [Rob Geller received such a small portion of the popular vote that I'm hesitant to say anything about him in this context]), but to actually vote *right* in a "small government" sense on ballot measures (no on gun control and basically anything involving government spending.) Interpeting this one is much more of an art than a science, but a first guess would be that this is folks who **are generally distrustful of both corporations, the government, and especially the intersection of the two in "corporate" politicians**. This explains their aversion to gun control, government spending, Hillary Clinton, Nancy Pelosi, and London Breed; and their embrace of Jill Stein, Preston Picus, and Dean Preston, none of whom took corporate money.
