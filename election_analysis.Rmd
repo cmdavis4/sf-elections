@@ -3,14 +3,14 @@ title: "R Notebook"
 output: html_notebook
 ---
 
-```{r setup}
+```{r setup, echo=FALSE}
 rm(list=ls())
 library(scales)
 library(ggplot2)
 library(gridExtra)
 ```
 
-```{r}
+```{r echo=FALSE}
 
 exclusions <- c()
 
@@ -43,7 +43,7 @@ Now we need to do feature creation and cleaning. We don't care about over vote o
 
 To make sure that dropping over votes is ok, let's look at the average percent of ballots cast that were over votes:
 
-```{r}
+```{r echo=FALSE}
 over.vote.percents <- c()
 for (measure.name in measure.names){
   voters <- raw.df[!is.na(raw.df[, paste(measure.name, 'over_vote', sep='_')]),]
@@ -59,7 +59,7 @@ On average, `r percent(mean(over.vote.percents))` of the ballots cast for a meas
 
 Now let's transform the features for all of the measures as discussed above:
 
-```{r}
+```{r echo=FALSE}
 features.df <- raw.df
 for (measure.name in measure.names){
   features <- names(features.df)[grepl(measure.name, names(features.df))]
@@ -98,18 +98,18 @@ for (measure.name in measure.names){
 }
 ```
 
-## District 5 Supervisor
+# Understanding the District 5 Supervisor Race
 
 A race near and dear to me. Let's start by just checking out what the Dean vote percent correlates with:
 
-```{r}
+```{r echo=FALSE}
 # Filter to D5
 d5 <- features.df[!is.na(features.df$board_of_supervisors_district_5_turnout),]
 d5 <- d5[, !apply(is.na(d5), 2, any)]
 d5.subset <- d5[, sapply(names(d5), function(x) !endsWith(x, 'turnout') & x != 'precinctid')]
 ```
 
-```{r}
+```{r echo=FALSE}
 cor.flat <- function(df){
   cor.matrix <- cor(df)
   diag(cor.matrix) <- 0
@@ -126,9 +126,9 @@ dean.cor <- dean.cor[, names(dean.cor) != 'First.Variable']
 dean.cor
 ```
 
-Nothing too surprising or counterintuitive in the top couple - London correlating with Dean so strongly obviously makes sense (and would be perfectly correlated if not for writein votes), and, as noted before, a precinct's choice of supervisor is most strongly correlated with whether or not it wanted mandatory condom use in porn (State Prop 60), hilariously enough. Let's look at plots of the top 4 (excluding London):
+Nothing too surprising or counterintuitive in the top couple - London correlating against Dean so strongly obviously makes sense, and, as noted before, a precinct's choice of supervisor is most strongly correlated with whether or not it wanted mandatory condom use in porn (State Prop 60), hilariously enough. Let's look at plots of the top 4 (excluding London):
 
-```{r}
+```{r echo=FALSE}
 # Let's drop London, since that's useless
 plot.data <- d5.subset[, c(as.character(dean.cor[2:5, 'Second.Variable']), 'board_of_supervisors_district_5_dean_preston')]
 plots <- lapply(colnames(plot.data)[!grepl('dean_preston', colnames(plot.data))], function(column) {
@@ -141,16 +141,22 @@ plots <- lapply(colnames(plot.data)[!grepl('dean_preston', colnames(plot.data))]
 do.call(grid.arrange, list(grobs=plots, ncol=2, top="Strongest Dean Correlations"))
 ```
 
-## Towards a metric of "progressiveness"
+##Breaking it down
 
-An interesting metric to work towards would be a vector (or, less ideally, couple of vectors) to represent the "progressiveness" of a precinct. An approach to this that would be more mathematically sound than manually cooking up some vector based on knowledge of local politics is the following:
+Doing a series of linear regressions against other ballot measures doesn't get us very far in understanding the factors underlying the results of the District 5 supervisor race. The State Prop 60 (mandatory condom use in porn) result correlating so strongly with the Dean vote hilarious and weird, but not super surprising - there's probably a latent age variable underlying it. Tom Temprano essentially ran with Dean, basically every voter guide that endorsed Dean also endorsed Jane Kim, and, while I wouldn't have guessed Prop N (non-citizen voting in school board elections) would be number 4, it also obviously isn't suprising when viewed from the traditional left/right political paradigm.
+
+We want to essentially understand the latent variables underlying the election results. The way to get to latent variables, in a formal sense, would be something like factor analysis or partial least squares regression. However, we're going to use principal components analysis. Why? I'm more familiar with it, and it almost always gives a very similar result to factor analysis.
+
+Our approach here will essentially be a home-cooked version of principal components regression:
+
 * Do dimensionality reduction using PCA
-* Find the principal components that correlate most strongly with some measure where there was a clear progressive/moderate split; the D5 supervisor race lends itself nicely to this (though then this would only apply to D5)
-* Test whether these vectors (or, ideally, this vector) also explain a good chunk of the variance in other measures where there's a clear progressive/moderate split
+* Find the principal components that correlate most strongly with some measure in which we are interested (first, the district 5 supervisor race)
+* Check how much these of the variance in our response (Dean) the PCs explain when used in a multiple linear regression, and choose how many to keep for the sake of parsimony
+* Test whether those same principal components also explain a good chunk of the variance in other measures where there's a clear progressive/moderate split
 
-First let's try this just for the D5 supervisor race to see if we can predict a precinct's supervisor preference with as few PC's as possible:
+As mentioned above, we'll first try this on the D5 supervisor race because I'm personally attached to it and I wanna know what happened, damnit!
 
-```{r}
+```{r echo=FALSE}
 # Set tolerance to .1 to cut out the most useless components
 pca <- prcomp(d5.subset[!grepl('board_of_supervisors_district_5', names(d5.subset))], center=TRUE, scale=TRUE, tol=.1)
 pca.df <- as.data.frame(pca$x)
@@ -163,7 +169,7 @@ pca.cor
 
 Now let's just try a multiple linear regression on the top couple:
 
-```{r}
+```{r echo=FALSE}
 mean.residuals <- c()
 fits <- list()
 ns <- 1:10
@@ -177,6 +183,11 @@ for(n in ns){
 
 do.call(anova, fits)
 
+```
+
+So even for something simple like multiple linear regression we don't need to include more than 9 PCs. Let's plot how adding more PCs affects the accuracy of our model:
+
+```{r echo=FALSE}
 p1 <- ggplot(data=data.frame(x=ns, y=mean.residuals), aes(x=x, y=y)) +
   geom_line() +
   xlab('Included principal components') +
@@ -191,38 +202,36 @@ p2 <- ggplot(data=data.frame(x=ns, y=sapply(fits, function(x) summary(x)$r.squar
   scale_x_continuous(breaks=ns)
 
 grid.arrange(p1, p2, top="PCA of Dean Preston vote by precinct")
-
 ```
 
-So we can explain `r percent(summary(fits[[3]])$r.squared)` of the variation in Dean's percent vote by precinct with the 3 most explanatory principal components. Let's look into what these principal components are:
+In the interest of parsimony, let's restrict ourselves to the 3 most explanatory principle components, which in total explain `r percent(summary(fits[[3]])$r.squared)` of the variation in Dean's percent vote by precinct. Let's go through them one by one; I'll attempt to explain what I think they represent using my qualitative knowledge of local politics/the polarization around a given measure:
 
-```{r}
+```{r echo=FALSE}
 pca.names <- pca.cor[1:3, 'Second.Variable']
-
-dummy <- lapply(pca.names, function(x){
-  print(as.character(x))
-  print(as.table(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing=TRUE)][1:20]))
-})
-
-# dean.pca.rotation <- data.frame(lapply(pca.names, function(x){
-#   names(pca$rotation[, x][order(abs(pca$rotation[, x]), decreasing=TRUE)][1:10])
-# }))
-# colnames(dean.pca.rotation) <- pca.names
-# dean.pca.rotation
 ```
 
-I'll now attempt to interpret these using a qualitative knowledge of city politics/the polarization around a given measure:
+I'll now attempt to interpret these using a qualitative knowledge of city politics:
 
-###PC1: General "Conservativeness""
-In a *very* rough sense, PC1 corresponds to something like **general "conservativness"** - things like keeping the death penalty, maintaining the criminalization of marijuana, voting for the nefarious Prop Q which was essentially a symbolic middle finger to homeless people, etc. This interpretation holds fairly well for all 10 of the top propositions.
+###`r pca.names[1]` : General "Conservativeness""
+```{r echo=FALSE}
+as.table(pca$rotation[, pca.names[1]][order(abs(pca$rotation[, pca.names[1]]), decreasing=TRUE)][1:15])
+```
+PC1 corresponds to something like **general "conservativness"** - things like keeping the death penalty, not raising taxes, maintaining the criminalization of marijuana, voting for the nefarious Prop Q which was essentially a symbolic middle finger to homeless people, and, depressingly, emphatically not voting for the one black candidate for the board of education. This one's a no-brainer, and it holds fairly well for all of the most important features in this PC.
 
-###PC3: Anti-Corporate/Anti-Establishment Sentiment
-PC5 is a little harder to interpet, as there are some conflicting components here as far as cleavage along traditional left/right political lines. At first one might think this is the progressive democrat contingent, since voting for Preston Picus and not for Nancy Pelosi were the single most important features of this PC, but the ballot measures (and positive coefficient for Gary Johnson) complicate that interpretation. I suspect this principal component represents something more like **anti-establishment sentiment**. From the perspective of candidates, we see that this PC voted for Dean Preston, Preston Picus, Jill Stein, and Gary Johnson, and emphatically NOT for London Breed, Nancy Pelosi, or Hillary Clinton, which can pretty uncontroversially be classified as an insurgent/establishment binary. However, from the point of view of ballot measures, this PC also voted against school bonds, taxes, condoms in porn, and gun control, and for restrictions on campaign contributions from lobbyists and transparency in the state legislature. I believe this feature can then be interpreted as distrust of the establishment, both political and corporate, and especially the intersection of the two. These may be small-government folks, some libertarians (as we see from the Gary Johnson coefficient,) or just people whose defining political ideology is less a left/right persepctive than it is an antagonistic stance towards a corrupt political establishment.
+###`r pca.names[2]`: Anti-Corporate/Anti-Establishment Sentiment
+```{r echo=FALSE}
+as.table(pca$rotation[, pca.names[2]][order(abs(pca$rotation[, pca.names[2]]), decreasing=TRUE)][1:15])
+```
+PC5 is a little harder to interpet, as there are some conflicting components here as far as cleavage along traditional left/right political lines. At first one might think this is the progressive democrat contingent, since voting for Preston Picus and not for Nancy Pelosi were the single most important features of this PC, but the ballot measures (and positive coefficient for Gary Johnson) complicate that interpretation. I suspect this principal component represents something more like **anti-establishment sentiment**. From the perspective of candidates, we see that this PC voted for Dean Preston, Preston Picus, Jill Stein, and Gary Johnson, and emphatically NOT for London Breed, Nancy Pelosi, or Hillary Clinton, which can pretty uncontroversially be classified as an insurgent/establishment binary. However, from the point of view of ballot measures, this PC also voted against school bonds and condoms in porn; and for restrictions on campaign contributions from lobbyists and transparency in the state legislature. I believe this feature can then be interpreted as distrust of the establishment, both political and corporate, and especially the intersection of the two. These may be small-government folks, some libertarians (as we see from the Gary Johnson coefficient,) or just people whose defining political ideology is less a left/right persepctive than it is an antagonistic stance towards what they may view as a corrupt political establishment.
 
 *\*\*Note that the school board/community college members here were a little all over the place since you could vote for about half of the field, so I didn't belabor them, but they roughly match the above interpretation.*
 
 
-~~The high positive coefficient of voting for Jill Stein and negative coefficient of voting for Hillary Clinton is very telling, and might lead one to believe that this is the Bernie crowd, but some of the other important features complicate this interpretation. State prop 51 was somewhat contentious among progressives, but voting against it is the most important feature of this component, which makes the Bernie interpretation hard to swallow. Overall the character of this component is to vote far left on *people* (yes on Jill Stein and Preston Picus, no on Hillary Clinton [Rob Geller received such a small portion of the popular vote that I'm hesitant to say anything about him in this context]), but to actually vote *right* in a "small government" sense on ballot measures (no on gun control and basically anything involving government spending.) Interpeting this one is much more of an art than a science, but a first guess would be that this is folks who **are generally distrustful of both corporations, the government, and especially the intersection of the two in "corporate" politicians**. This explains their aversion to gun control, government spending, Hillary Clinton, Nancy Pelosi, and London Breed; and their embrace of Jill Stein, Preston Picus, and Dean Preston, none of whom took corporate money.~~
+###`r pca.names[3]`: Poorer, older folks
+```{r echo=FALSE}
+as.table(pca$rotation[, pca.names[3]][order(abs(pca$rotation[, pca.names[3]]), decreasing=TRUE)][1:15])
+```
+This one also isn't nearly as easy to interpret as PC1, but I suspect this is something like **older folks who fall towards the lower end of the socioeconomic spectrum**; given that this feature correlates the third most strongly with whether or not a precinct voted for Dean (and correlates negatively,) I suspect this may also be capturing some information about race. Without being too on the nose, given the makeup of District 5 and knowing a bit about which neighborhoods voted which way, it wouldn't be unreasonable to guess that this corresponds to something like older black folks. This PC voted for things like condoms in porn and transparency in government, and against the anti-homelessness prop Q, but the defining characteristic of this PC was that it voted strongly for affordable housing at every opportunity. It also voted for Nancy Pelosi and London Breed over Preston Picus and Dean Preston, which leads me to believe that this is older, socially moderate folks.
 
-##PC3: Education
+A few things in this are hard to interpret, most notably the rejection of the tree ordinance and the BART bond. I can't explain the latter at all really, and I recall there being some very neighborhood-specific antipathy towards the tree ordinance, but I don't know where. The school board folks are a little weird here too, but Rob Geller in particular got such a small percent of the vote that it could just be a few anomalous precincts - this is only a population of 67 precincts, after all.
 
