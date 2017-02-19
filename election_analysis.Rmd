@@ -8,6 +8,10 @@ output:
   # html_document: default
 ---
 
+# Introduction
+
+As a San Francisco resident, a data scientist, and a very political person, I've endeavored to conduct some analysis of the city's recent election results. The .csv files used to conduct this analyis are processed from the [source data](./data/source_data/) into the [derived data](./data/derived_data/) in this [IPython notebook](./geodatabase_from_source_data.ipynb).
+
 ```{r setup, echo=FALSE, warning=FALSE, message=FALSE}
 rm(list=ls())
 require(scales)

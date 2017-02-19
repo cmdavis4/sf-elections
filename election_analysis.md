@@ -2,6 +2,11 @@ Analysis of the November 2016 San Francisco Election Results
 ================
 Charles Davis
 
+Introduction
+============
+
+As a San Francisco resident, a data scientist, and a very political person, I've endeavored to conduct some analysis of the city's recent election results. The .csv files used to conduct this analyis are processed from the [source data](./data/source_data/) into the [derived data](./data/derived_data/) in this [IPython notebook](./geodatabase_from_source_data.ipynb).
+
 ### Feature creation
 
 Now we need to do feature creation and cleaning. We don't care about over vote on its own, so we'll certainly drop that. In precincts where there was no over vote for a certain binary measure (unlikely but possible), this would still be overdefined (i.e. yes + no + under = ballots cast), so we'll drop under votes as well. We'll then normalize the yes votes as yes/(yes+no), which we'll call "yes\_of\_accepted", and drop the no votes. For races with people, we'll drop write-in since I'd be shocked if that had any useful information, and then normalize the rest of the votes as candidate / ballots\_cast. For every measure we'll also create a feature calculated and ballots cast / registration, called which we'll call "turnout"
