@@ -120,7 +120,11 @@ for (measure.name in measure.names){
 
 # Understanding the District 5 Supervisor Race
 
-A race near and dear to me. Let's start by just checking out what the Dean vote percent correlates with:
+A race near and dear to me. There were two candidates for supervisor of District 5 this past November: London Breed, the incumbent and president of the board of supervisors, and Dean Preston. For those not steeped in San Francisco politics, a fairly uncontroversial heuristic would be to compare this to the Hillary/Bernie race, with London/Dean playing those respective roles. There's certainly more nuance to it, and the Overton window of San Francisco is a good deal to the left of that of the country, but the moderate/progressive, establishment/avowedly non-corporate comparison holds up fairly well. The endorsements bear this out: the Democratic party endorsed London, while the post-Bernie group Our Revolution and the San Francisco Berniecrats endorsed Dean.
+
+As I mentioned in the intro, I volunteered pretty extensively with Dean's campaign, and was pretty bummed that he lost. At some level, all of this analysis is moot because more outreach could have decided the day - about 6,000 people voted but left supervisor blank, and London's margin of victory was about 2,000 votes. Nonetheless, it's definitely still worth understanding the breakdown of people who did vote. Given the above statistic, it's probably worth eventually coming back to figure out which areas in particular filled out ballots but left supervisor blank, and why they did so. We'll leave this til later, though, and focus on understanding people who did vote.
+
+Let's start by just checking out what the Dean vote percent correlates with:
 
 ```{r echo=FALSE}
 # Filter to D5
@@ -163,15 +167,15 @@ do.call(grid.arrange, list(grobs=plots, ncol=2, top="Strongest Dean Correlations
 
 ##Breaking it down: PCA
 
-Doing a series of linear regressions against other ballot measures doesn't get us very far in understanding the factors underlying the results of the District 5 supervisor race. The State Prop 60 (mandatory condom use in porn) result correlating so strongly with the Dean vote hilarious and weird, but not super surprising - there's probably a latent age variable underlying it. Tom Temprano essentially ran with Dean, basically every voter guide that endorsed Dean also endorsed Jane Kim, and, while I wouldn't have guessed Prop N (non-citizen voting in school board elections) would be number 4, it also obviously isn't suprising when viewed from the traditional left/right political paradigm.
+Doing a series of linear regressions against other ballot measures doesn't get us very far in understanding the factors underlying the results of the District 5 supervisor race. The State Prop 60 (mandatory condom use in porn) result correlating so strongly with the Dean vote is hilarious and weird, but not super surprising - there's probably something like a latent age variable underlying it. Tom Temprano essentially ran with Dean, basically every voter guide that endorsed Dean also endorsed Jane Kim, and, while I wouldn't have guessed Prop N (non-citizen voting in school board elections) would be number 4, neither is it suprising when viewed from the traditional left/right political paradigm.
 
-We want to essentially understand the latent variables underlying the election results. The way to get to latent variables, in a formal sense, would be something like factor analysis or partial least squares regression. However, we're going to use principal components analysis. Why? I'm more familiar with it, and it almost always gives a very similar result to factor analysis. Perhaps most importantly, though, principal components are by definition orthogonal, whereas latent variables are not necessarily orthogonal. I'll explain why I think that's a desirable property for this interpretation after we calculate the principal components.
+We want to essentially understand the latent variables underlying the election results. The way to get to latent variables, in a formal sense, would be something like factor analysis or partial least squares regression. However, we're going to use principal components analysis. Why? I'm more familiar with it, and it almost always gives a very similar result to factor analysis. Perhaps more importantly, though, principal components are by definition orthogonal, whereas latent variables are not necessarily orthogonal. I'll explain why I think that's a desirable property for this interpretation after we examine the principal components.
 
 Our approach here will essentially be a home-cooked version of principal components regression:
 
 * Do dimensionality reduction using PCA
-* Find the principal components that correlate most strongly with some measure in which we are interested (first, the district 5 supervisor race)
-* Check how much these of the variance in our response (Dean) the PCs explain when used in a multiple linear regression, and choose how many to keep for the sake of parsimony
+* Find the principal components that correlate most strongly with some measure in which we are interested (first, the percent of Dean vote in the district 5 supervisor race)
+* Check how much of the variance in our response variable (Dean) the PCs explain when used in a multiple linear regression, and choose how many to keep for the sake of parsimony
 * Test whether those same principal components also explain a good chunk of the variance in other measures where there's a clear progressive/moderate split
 
 As mentioned above, we'll first try this on the D5 supervisor race because I'm personally attached to it and I wanna know what happened, damnit!
@@ -246,7 +250,7 @@ kable(data.frame(measure.name=names(d), rotation.coefficient=unname(d)))
 
 PC5 is a little harder to interpet, as there are some conflicting components here as far as cleavage along traditional left/right political lines. At first one might think this is the progressive democrat contingent, since voting for Preston Picus and not for Nancy Pelosi were the single most important features of this PC, but the ballot measures (and positive coefficient for Gary Johnson) complicate that interpretation. I suspect this principal component represents something more like **anti-establishment sentiment**. From the perspective of candidates, we see that this PC voted for Dean Preston, Preston Picus, Jill Stein, and Gary Johnson, and emphatically NOT for London Breed, Nancy Pelosi, or Hillary Clinton, which can pretty uncontroversially be classified as an insurgent/establishment binary. However, from the point of view of ballot measures, this PC also voted against school bonds and condoms in porn; and for restrictions on campaign contributions from lobbyists and transparency in the state legislature. I believe this feature can then be interpreted as distrust of the establishment, both political and corporate, and especially the intersection of the two. These may be small-government folks, some libertarians (as we see from the Gary Johnson coefficient,) or just people whose defining political ideology is less a left/right persepctive than it is an antagonistic stance towards what they may view as a corrupt political establishment.
 
-*&ast;&ast;Note that the school board/community college members here were a little all over the place since you could vote for about half of the field, so I didn't belabor them, but they roughly match the above interpretation.*
+*Note that the school board/community college members here were a little all over the place since you could vote for about half of the field, so I didn't belabor them, but they roughly match the above interpretation.*
 
 
 ###`r pca.names[3]`: Poorer, older folks
