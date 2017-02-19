@@ -118,7 +118,7 @@ for (measure.name in measure.names){
 }
 ```
 
-# Understanding the District 5 Supervisor Race: PCA
+# Understanding the District 5 Supervisor Race
 
 A race near and dear to me. Let's start by just checking out what the Dean vote percent correlates with:
 
@@ -161,7 +161,7 @@ plots <- lapply(colnames(plot.data)[!grepl('dean_preston', colnames(plot.data))]
 do.call(grid.arrange, list(grobs=plots, ncol=2, top="Strongest Dean Correlations"))
 ```
 
-##Breaking it down
+##Breaking it down: PCA
 
 Doing a series of linear regressions against other ballot measures doesn't get us very far in understanding the factors underlying the results of the District 5 supervisor race. The State Prop 60 (mandatory condom use in porn) result correlating so strongly with the Dean vote hilarious and weird, but not super surprising - there's probably a latent age variable underlying it. Tom Temprano essentially ran with Dean, basically every voter guide that endorsed Dean also endorsed Jane Kim, and, while I wouldn't have guessed Prop N (non-citizen voting in school board elections) would be number 4, it also obviously isn't suprising when viewed from the traditional left/right political paradigm.
 
