@@ -5,17 +5,31 @@ Charles Davis
 Introduction
 ============
 
-As a San Francisco resident, a data scientist, and a very political person, I've endeavored to conduct some analysis of the city's recent election results. The .csv files used to conduct this analyis are processed from the [source data](./data/source_data/) into the [derived data](./data/derived_data/) in this [IPython notebook](./geodatabase_from_source_data.ipynb).
+As a San Francisco resident, data scientist, and highly political person, I've endeavored to conduct some analysis of the city's recent election results. Most Americans were shocked in some way by the November 2016 elections; essentially nobody thought Donald Trump would be president, and there were plenty of fairly surprising result to be found in California and San Francisco. As one of a number of possible examples, the fact that the death penalty was not just maintained but expedited was certainly a surprise to me and to everyone I knew; I don't know that I ever saw any actual polling on this issue, but I had certainly assumed, given the ostensibly liberal character of California, that it would be repealed in a landslide.
 
-### Feature creation
+Understanding the roots of these upsets must be paramount for any political project, electoral or otherwise. In the course of this analysis, I hope to tease out some less obvious conclusions about these results; certainly some neighborhoods have different political character than others, but approaching this with an eye to nuance beyond the left/right binary will make it far easier to pinpoint exactly what happened. I hope to use this data to infer as much as possible about the different kinds of San Francisco voters, both out of a deep, visceral curiosity and in the hopes of perhaps eventually using these conslusions to more effectively engage folks in direct and electoral political action.
 
-Now we need to do feature creation and cleaning. We don't care about over vote on its own, so we'll certainly drop that. In precincts where there was no over vote for a certain binary measure (unlikely but possible), this would still be overdefined (i.e. yes + no + under = ballots cast), so we'll drop under votes as well. We'll then normalize the yes votes as yes/(yes+no), which we'll call "yes\_of\_accepted", and drop the no votes. For races with people, we'll drop write-in since I'd be shocked if that had any useful information, and then normalize the rest of the votes as candidate / ballots\_cast. For every measure we'll also create a feature calculated and ballots cast / registration, called which we'll call "turnout"
+I definitely have a deep "academic" interest in this material; that being said, I volunteered extensively with Dean Preston's campaign for supervisor of District 5, which naturally partly informs my motivation to look into this data. Self-fulfillment notwithstanding, my work with the campaign has given me a uniquely intimate view into the District 5 supervisor race, so I'll focus much of my analysis on it not only because it is the race in which I'm most interested, but because it is the race in which I have the most non-data expertise.
 
-To make sure that dropping over votes is ok, let's look at the average percent of ballots cast that were over votes:
+Data
+----
 
-On average, 0.111% of the ballots cast for a measure were over votes, so we don't need to worry too much about their interpretation.
+The data to be analyzed in this project is precinct-level voting data from the San Francisco November 2016 election.
 
-Now let's transform the features for all of the measures as discussed above:
+### Sources
+
+See the [readme](./README.md) for the sources of the data. All original data is contained in the [source data](./data/source_data/) directory of this respository.
+
+### Pre-Processing
+
+The .csv files used to conduct this analysis are processed from the [source data](./data/source_data/) into the [actual files used](./data/derived_data/) as part of this [IPython notebook](./geodatabase_from_source_data.ipynb).
+
+Feature creation
+----------------
+
+Now on to feature creation and cleaning. We don't care about over vote (votes where too many choices were filled in, and so were disregarded,) on its own, so we'll certainly drop that. We'll drop under votes as well; at least as far as I understand it, under votes are still counted towards the candidates that were filled in, but the number of ballots that didn't fill out the maximum number of candidates isn't very meaningful to us on its own. For the ballot measures, we'll normalize the yes votes as $\\frac{yes}{yes+no}$, which we'll call *y**e**s*\_*o**f*\_*a**c**c**e**p**t**e**d*, and drop the no votes. For races with people, we'll drop write-in since I'd be shocked if that had any useful information, and then normalize the rest of the votes as $\\frac{votes\\ for\\ candidate}{ballots\\ cast}$. For every measure we'll also create a feature calculated as $\\frac{ballots\\ cast}{registration}$, called which we'll call *t**u**r**n**o**u**t*.
+
+As far as dropping over votes, we should still check what percentage of the votes were over votes just to sleep more soundly; this number turns out to be 0.111% of the ballots cast for a measure were over votes, so we don't need to worry too much about their interpretation.
 
 Understanding the District 5 Supervisor Race
 ============================================
@@ -44,8 +58,8 @@ Nothing too surprising or counterintuitive in the top couple - London correlatin
 
 ![](election_analysis_files/figure-markdown_github/unnamed-chunk-6-1.png)
 
-Breaking it down
-----------------
+Breaking it down: PCA
+---------------------
 
 Doing a series of linear regressions against other ballot measures doesn't get us very far in understanding the factors underlying the results of the District 5 supervisor race. The State Prop 60 (mandatory condom use in porn) result correlating so strongly with the Dean vote hilarious and weird, but not super surprising - there's probably a latent age variable underlying it. Tom Temprano essentially ran with Dean, basically every voter guide that endorsed Dean also endorsed Jane Kim, and, while I wouldn't have guessed Prop N (non-citizen voting in school board elections) would be number 4, it also obviously isn't suprising when viewed from the traditional left/right political paradigm.
 

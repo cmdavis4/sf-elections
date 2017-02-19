@@ -2,9 +2,9 @@
 title: "Analysis of the November 2016 San Francisco Election Results"
 author: "Charles Davis"
 output:
-  html_notebook: default
-  html_document: default
   github_document: default
+  html_document: default
+  html_notebook: default
   pdf_document: default
 ---
 
